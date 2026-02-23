@@ -41,8 +41,9 @@ def to_exclusive(amount: float, mode: str) -> float:
 
 # =========================================
 # Core calculation with focused breakdown
-#  - LCT is NOT included in dutiable base for stamp duty
-#  - Breakdown shows ONLY LCT, Stamp Duty, Invoice Totals
+#  - VIC ONLY: LCT is included in dutiable base before rounding and rates
+#  - Other states: LCT is excluded from dutiable base
+#  - Breakdown shows LCT, Stamp Duty, Invoice Totals
 # =========================================
 def calculate_all(
     state: str,
@@ -104,7 +105,7 @@ def calculate_all(
 
     lines.append("")  # spacer
 
-    # --- State stamp duty (NO LCT in base) ---
+    # --- State stamp duty ---
     stamp_duty = 0.0
     rounded_dutiable = 0.0
 
@@ -193,15 +194,19 @@ def calculate_all(
         lines.append(f"Stamp duty: {fmt_money(stamp_duty)}")
 
     elif state == "Victoria":
-        # VIC build-up: EX-GST -> apply GST once -> round UP to $200 (NO LCT added)
+        # VIC build-up: EX-GST -> apply GST once -> add LCT -> round UP to $200
         price_ex = to_exclusive(price_entered, gst_mode)
         discount_ex = to_exclusive(discount_entered, gst_mode)
+
         vic_dutiable_ex = max(price_ex - discount_ex, 0.0)
-        vic_dutiable_incl = vic_dutiable_ex * 1.10
+        vic_dutiable_incl_gst = vic_dutiable_ex * 1.10
+        vic_dutiable_plus_lct = vic_dutiable_incl_gst + LCT_amount
+
         lines.append("VIC build-up:")
         lines.append(f"  EX-GST base (price - discount): {fmt_money(vic_dutiable_ex)}")
-        lines.append(f"  Add GST once (×1.10): {fmt_money(vic_dutiable_incl)}")
-        rounded_dutiable = round_up_to(vic_dutiable_incl, 200)
+        lines.append(f"  Add GST once (×1.10): {fmt_money(vic_dutiable_incl_gst)}")
+        lines.append(f"  Add LCT: {fmt_money(LCT_amount)} -> {fmt_money(vic_dutiable_plus_lct)}")
+        rounded_dutiable = round_up_to(vic_dutiable_plus_lct, 200)
         lines.append(f"  Round up to next $200: {fmt_money(rounded_dutiable)}")
 
         def vic_passenger_rate(value: float) -> float:
@@ -297,7 +302,7 @@ def calculate_all(
 # =========================================
 st.set_page_config(page_title="Stamp Duty Calculator (Streamlit)", layout="wide")
 st.title("Stamp Duty Calculator")
-st.caption("Cents‑safe rounding • LCT excluded from dutiable value • Focused breakdown")
+st.caption("Cents‑safe rounding • VIC dutiable value includes LCT • Focused breakdown")
 
 # --- Session state for reactive state switching ---
 if "prev_state" not in st.session_state:
